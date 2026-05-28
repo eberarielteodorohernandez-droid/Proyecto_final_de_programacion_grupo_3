@@ -5,15 +5,67 @@
 #include <vector>
 #include <iomanip>
 #include <ctime>
+#include <cctype>  // Para isalpha, isdigit, etc.
 #include <mysql.h>
 #include "ConexionBD.h" 
 
 using namespace std;
 
 // ===================================================
+// 0. ENUM DE VALIDACIÓN DE CARACTERES
+// ===================================================
+enum class ValidacionTipo {
+    GENERICO,
+    SOLO_LETRAS,
+    SOLO_DIGITOS,
+    ALFANUMERICO_ESPACIOS,
+    NIT_FORMAT,
+    DIRECCION,
+    ALFANUMERICO_ESPACIOS_PUNTUACION,
+    NOMBRE_ARCHIVO,
+    FECHA
+};
+
+// Valida si una cadena contiene solo los caracteres permitidos según el tipo
+bool validarCadena(const string& str, ValidacionTipo tipo) {
+    for (char c : str) {
+        switch (tipo) {
+        case ValidacionTipo::SOLO_LETRAS:
+            if (!isalpha(c) && c != ' ') return false;
+            break;
+        case ValidacionTipo::SOLO_DIGITOS:
+            if (!isdigit(c)) return false;
+            break;
+        case ValidacionTipo::ALFANUMERICO_ESPACIOS:
+            if (!isalnum(c) && c != ' ') return false;
+            break;
+        case ValidacionTipo::NIT_FORMAT:
+            if (!isupper(c) && !isdigit(c) && c != '-' && c != '/') return false;
+            break;
+        case ValidacionTipo::DIRECCION:
+            if (!isalnum(c) && c != ' ' && c != '#' && c != '-' && c != '.' && c != ',')
+                return false;
+            break;
+        case ValidacionTipo::ALFANUMERICO_ESPACIOS_PUNTUACION:
+            if (!isalnum(c) && c != ' ' && c != '.' && c != ',' && c != '-' && c != '#' && c != '(' && c != ')')
+                return false;
+            break;
+        case ValidacionTipo::NOMBRE_ARCHIVO:
+            if (!isalnum(c) && c != '_' && c != '-') return false;
+            break;
+        case ValidacionTipo::FECHA:
+            if (!isdigit(c) && c != '-') return false;
+            break;
+        default: // GENERICO
+            break;
+        }
+    }
+    return true;
+}
+
+// ===================================================
 // 1. FUNCIONES DE VALIDACIÓN Y SEGURIDAD
 // ===================================================
-// Sanitiza strings para prevenir Inyección SQL
 string sanitizarString(ConexionBD& cn, const string& input) {
     if (input.empty()) return "";
     char* buffer = new char[input.length() * 2 + 1];
@@ -51,7 +103,7 @@ double leerDouble(const string& mensaje) {
     }
 }
 
-string leerCadena(const string& mensaje, int maxLen = 255) {
+string leerCadena(const string& mensaje, int maxLen = 255, ValidacionTipo tipo = ValidacionTipo::GENERICO) {
     string valor;
     while (true) {
         cout << mensaje;
@@ -61,21 +113,22 @@ string leerCadena(const string& mensaje, int maxLen = 255) {
                 cout << "[!] Error: Has excedido el limite de " << maxLen << " caracteres. Intenta de nuevo.\n";
                 continue;
             }
+            if (tipo != ValidacionTipo::GENERICO && !validarCadena(valor, tipo)) {
+                cout << "[!] Error: El campo contiene caracteres no permitidos. Intenta de nuevo.\n";
+                continue;
+            }
             return valor;
         }
         cout << "[!] Error: El campo no puede estar vacio.\n";
     }
 }
 
-// Genera la fecha actual en formato YYYY-MM-DD
 string obtenerFechaActual() {
     time_t t = time(nullptr);
     tm nowStruct;
 #if defined(_MSC_VER)
-    // Use secure localtime_s on MSVC to avoid deprecation warning C4996
     localtime_s(&nowStruct, &t);
 #else
-    // Use thread-safe localtime_r on POSIX systems
     localtime_r(&t, &nowStruct);
 #endif
     char buffer[11];
@@ -86,8 +139,6 @@ string obtenerFechaActual() {
 // ===================================================
 // 2. PROGRAMACIÓN ORIENTADA A OBJETOS (POO)
 // ===================================================
-
-// Clase Base (Demuestra Herencia y Encapsulamiento)
 class Persona {
 protected:
     string nombres;
@@ -101,7 +152,6 @@ public:
     string getApellidos() { return apellidos; }
 };
 
-// Clase Hija (Herencia)
 class Cliente : public Persona {
 private:
     string nit;
@@ -112,7 +162,6 @@ public:
         : Persona(n, a, t, g), nit(ni), correo(c) {
     }
 
-    // Metodo de clase para insertar usando POO
     bool registrarEnBD(ConexionBD& cn) {
         string n_safe = sanitizarString(cn, nombres);
         string a_safe = sanitizarString(cn, apellidos);
@@ -127,7 +176,6 @@ public:
     }
 };
 
-// Estructura para manejar el detalle temporal en RAM antes de enviar a DB
 struct ProductoDetalle {
     int idProducto;
     string nombre;
@@ -146,7 +194,6 @@ void ejecutarActualizacion(string entidad, ConexionBD& cn);
 void ejecutarEliminacion(string entidad, ConexionBD& cn);
 void mostrarTabla(string query, int numColumnas, ConexionBD& cn);
 
-// Módulos CRUD
 void insertarMarca(ConexionBD& cn);
 void insertarProducto(ConexionBD& cn);
 void insertarProveedor(ConexionBD& cn);
@@ -154,7 +201,6 @@ void insertarCliente(ConexionBD& cn);
 void insertarPuesto(ConexionBD& cn);
 void insertarEmpleado(ConexionBD& cn);
 
-// Módulos Inteligentes (Maestro-Detalle)
 void moduloVentasInteligente(ConexionBD& cn);
 void insertarCompra(ConexionBD& cn);
 
@@ -163,7 +209,7 @@ void insertarCompra(ConexionBD& cn);
 // ===================================================
 int main() {
     setlocale(LC_ALL, "spanish");
-
+    setlocale(LC_NUMERIC, "C");
     ConexionBD cn = ConexionBD();
     cn.abrir_conexion();
 
@@ -217,12 +263,10 @@ void moduloVentasInteligente(ConexionBD& cn) {
     cout << "           NUEVA VENTA / FACTURACION         " << endl;
     cout << "=============================================" << endl;
 
-    // 1. GESTIÓN DEL CLIENTE
-    string nit = leerCadena("Ingrese NIT del cliente (Escriba 'C/F' para Consumidor Final): ", 12);
+    string nit = leerCadena("Ingrese NIT del cliente (Escriba 'C/F' para Consumidor Final): ", 12, ValidacionTipo::NIT_FORMAT);
     int idCliente = 0;
     string nombreCliente = "Consumidor Final";
 
-    // Convertir NIT a mayúsculas para homologar C/F
     for (auto& c : nit) c = toupper(c);
 
     if (nit != "C/F" && nit != "CF") {
@@ -237,17 +281,16 @@ void moduloVentasInteligente(ConexionBD& cn) {
             }
             else {
                 cout << "\n[!] Cliente no registrado. Iniciando registro automatico..." << endl;
-                string nom = leerCadena("Nombres (Max 60): ", 60);
-                string ape = leerCadena("Apellidos (Max 60): ", 60);
+                string nom = leerCadena("Nombres (Max 60): ", 60, ValidacionTipo::SOLO_LETRAS);
+                string ape = leerCadena("Apellidos (Max 60): ", 60, ValidacionTipo::SOLO_LETRAS);
                 int gen = leerEntero("Genero (1=Masculino, 0=Femenino): ");
-                string tel = leerCadena("Telefono (Max 25): ", 25);
+                string tel = leerCadena("Telefono (Max 25): ", 25, ValidacionTipo::SOLO_DIGITOS);
                 string correo = leerCadena("Correo (Max 45): ", 45);
 
                 Cliente nuevoCliente(nom, ape, tel, gen, nit, correo);
                 if (nuevoCliente.registrarEnBD(cn)) {
                     cout << "[OK] Cliente registrado exitosamente." << endl;
                     nombreCliente = nom + " " + ape;
-                    // Recuperar el ID insertado
                     mysql_query(cn.getConector(), "SELECT LAST_INSERT_ID();");
                     MYSQL_RES* resID = mysql_store_result(cn.getConector());
                     MYSQL_ROW rowID = mysql_fetch_row(resID);
@@ -264,12 +307,10 @@ void moduloVentasInteligente(ConexionBD& cn) {
         }
     }
     else {
-        // Manejo de C/F. Asumiremos ID 1 o NULL si la BD lo permite (Ajustado a ID 1 generico)
         cout << "[I] Facturando como Consumidor Final." << endl;
-        idCliente = 1; // Asegúrate de tener un cliente con ID 1 en DB para C/F, o quitar la llave foránea estricta.
+        idCliente = 1;
     }
 
-    // 2. AUTOGENERACIÓN DE FACTURA
     int idEmpleado = leerEntero("Ingrese ID de Empleado (Cajero): ");
     int noFactura = 1;
     char serie = 'A';
@@ -283,7 +324,6 @@ void moduloVentasInteligente(ConexionBD& cn) {
     }
     mysql_free_result(resFact);
 
-    // 3. DETALLE DE PRODUCTOS
     vector<ProductoDetalle> carrito;
     double totalVenta = 0.0;
     int numProductos = leerEntero("\nCantidad de productos diferentes a facturar: ");
@@ -318,16 +358,14 @@ void moduloVentasInteligente(ConexionBD& cn) {
             }
             else {
                 cout << "[!] Producto no existe. Intente de nuevo." << endl;
-                i--; // Repetir iteración
+                i--;
             }
             mysql_free_result(resP);
         }
     }
 
-    // 4. GUARDAR EN BASE DE DATOS (TRANSACCIÓN)
     mysql_query(cn.getConector(), "START TRANSACTION");
 
-    // Guardar Maestro
     string qVenta = "INSERT INTO ventas (no_factura, serie, fecha_factura, id_cliente, id_empleado, fecha_ingreso) VALUES ("
         + to_string(noFactura) + ", '" + string(1, serie) + "', '" + fechaFactura + "', " + to_string(idCliente) + ", " + to_string(idEmpleado) + ", NOW());";
 
@@ -344,7 +382,6 @@ void moduloVentasInteligente(ConexionBD& cn) {
     idVenta = atoi(rowVenta[0]);
     mysql_free_result(resVenta);
 
-    // Guardar Detalle y Restar Stock
     for (const auto& item : carrito) {
         string qDetalle = "INSERT INTO ventas_detalle (id_venta, id_producto, cantidad, precio_unitario) VALUES ("
             + to_string(idVenta) + ", " + to_string(item.idProducto) + ", " + to_string(item.cantidad) + ", " + to_string(item.precioUnitario) + ");";
@@ -360,7 +397,6 @@ void moduloVentasInteligente(ConexionBD& cn) {
 
     mysql_query(cn.getConector(), "COMMIT");
 
-    // 5. IMPRESIÓN DE LA FACTURA
     cout << "\n\n======================================================" << endl;
     cout << "                   SUPERMERCADO XYZ                   " << endl;
     cout << "                   Factura de venta                   " << endl;
@@ -385,7 +421,6 @@ void moduloVentasInteligente(ConexionBD& cn) {
     cout << "======================================================\n" << endl;
 }
 
-
 // ===================================================
 // 6. FLUJO DE CONTROL Y CRUD GENERALES
 // ===================================================
@@ -395,7 +430,7 @@ void menuOperaciones(string entidad, ConexionBD& cn) {
         cout << "\n--- Gestion de " << entidad << " ---" << endl;
         cout << "1. Crear (Insertar)" << endl;
         cout << "2. Leer (Consultar)" << endl;
-        if (entidad != "Compras") { // Bloqueamos update/delete para maestro-detalle
+        if (entidad != "Compras") {
             cout << "3. Actualizar" << endl;
             cout << "4. Eliminar" << endl;
         }
@@ -442,24 +477,24 @@ void ejecutarLectura(string entidad, ConexionBD& cn) {
 
 // --------------------- CRUDS BÁSICOS ---------------------
 void insertarMarca(ConexionBD& cn) {
-    string marca = sanitizarString(cn, leerCadena("Nombre de marca (Max 50): ", 50));
+    string marca = sanitizarString(cn, leerCadena("Nombre de marca (Max 50): ", 50, ValidacionTipo::SOLO_LETRAS));
     string query = "INSERT INTO marcas (marca) VALUES ('" + marca + "');";
     if (mysql_query(cn.getConector(), query.c_str()) == 0) cout << "[OK] Guardado." << endl;
     else cout << "[!] Error: " << mysql_error(cn.getConector()) << endl;
 }
 
 void insertarPuesto(ConexionBD& cn) {
-    string puesto = sanitizarString(cn, leerCadena("Nombre de puesto (Max 50): ", 50));
+    string puesto = sanitizarString(cn, leerCadena("Nombre de puesto (Max 50): ", 50, ValidacionTipo::SOLO_LETRAS));
     string query = "INSERT INTO puestos (puesto) VALUES ('" + puesto + "');";
     if (mysql_query(cn.getConector(), query.c_str()) == 0) cout << "[OK] Guardado." << endl;
     else cout << "[!] Error: " << mysql_error(cn.getConector()) << endl;
 }
 
 void insertarProveedor(ConexionBD& cn) {
-    string prov = sanitizarString(cn, leerCadena("Proveedor (Max 60): ", 60));
-    string nit = sanitizarString(cn, leerCadena("NIT (Max 12): ", 12));
-    string dir = sanitizarString(cn, leerCadena("Direccion (Max 80): ", 80));
-    string tel = sanitizarString(cn, leerCadena("Telefono (Max 25): ", 25));
+    string prov = sanitizarString(cn, leerCadena("Proveedor (Max 60): ", 60, ValidacionTipo::SOLO_LETRAS));
+    string nit = sanitizarString(cn, leerCadena("NIT (Max 12): ", 12, ValidacionTipo::NIT_FORMAT));
+    string dir = sanitizarString(cn, leerCadena("Direccion (Max 80): ", 80, ValidacionTipo::DIRECCION));
+    string tel = sanitizarString(cn, leerCadena("Telefono (Max 25): ", 25, ValidacionTipo::SOLO_DIGITOS));
 
     string query = "INSERT INTO proveedores (proveedor, nit, direccion, telefono) VALUES ('"
         + prov + "', '" + nit + "', '" + dir + "', '" + tel + "');";
@@ -469,11 +504,11 @@ void insertarProveedor(ConexionBD& cn) {
 }
 
 void insertarCliente(ConexionBD& cn) {
-    string nom = sanitizarString(cn, leerCadena("Nombres: ", 60));
-    string ape = sanitizarString(cn, leerCadena("Apellidos: ", 60));
-    string nit = sanitizarString(cn, leerCadena("NIT: ", 12));
+    string nom = sanitizarString(cn, leerCadena("Nombres: ", 60, ValidacionTipo::SOLO_LETRAS));
+    string ape = sanitizarString(cn, leerCadena("Apellidos: ", 60, ValidacionTipo::SOLO_LETRAS));
+    string nit = sanitizarString(cn, leerCadena("NIT: ", 12, ValidacionTipo::NIT_FORMAT));
     int gen = leerEntero("Genero (1=M, 0=F): ");
-    string tel = sanitizarString(cn, leerCadena("Telefono: ", 25));
+    string tel = sanitizarString(cn, leerCadena("Telefono: ", 25, ValidacionTipo::SOLO_DIGITOS));
     string correo = sanitizarString(cn, leerCadena("Correo: ", 45));
 
     string query = "INSERT INTO clientes (nombres, apellidos, nit, genero, telefono, correo_electronico, fecha_ingreso) VALUES ('"
@@ -484,10 +519,10 @@ void insertarCliente(ConexionBD& cn) {
 }
 
 void insertarProducto(ConexionBD& cn) {
-    string prod = sanitizarString(cn, leerCadena("Producto: ", 50));
+    string prod = sanitizarString(cn, leerCadena("Producto: ", 50, ValidacionTipo::ALFANUMERICO_ESPACIOS));
     int idMarca = leerEntero("ID Marca: ");
-    string desc = sanitizarString(cn, leerCadena("Descripcion: ", 100));
-    string img = sanitizarString(cn, leerCadena("Nombre de Imagen (Max 30): ", 30));
+    string desc = sanitizarString(cn, leerCadena("Descripcion: ", 100, ValidacionTipo::ALFANUMERICO_ESPACIOS_PUNTUACION));
+    string img = sanitizarString(cn, leerCadena("Nombre de Imagen (Max 30): ", 30, ValidacionTipo::NOMBRE_ARCHIVO));
     double pCosto = leerDouble("Precio Costo: ");
     double pVenta = leerDouble("Precio Venta: ");
     int existencia = leerEntero("Existencia: ");
@@ -500,15 +535,15 @@ void insertarProducto(ConexionBD& cn) {
 }
 
 void insertarEmpleado(ConexionBD& cn) {
-    string nom = sanitizarString(cn, leerCadena("Nombres: ", 60));
-    string ape = sanitizarString(cn, leerCadena("Apellidos: ", 60));
-    string dir = sanitizarString(cn, leerCadena("Direccion: ", 80));
-    string tel = sanitizarString(cn, leerCadena("Telefono: ", 25));
-    string cui = sanitizarString(cn, leerCadena("CUI: ", 15));
+    string nom = sanitizarString(cn, leerCadena("Nombres: ", 60, ValidacionTipo::SOLO_LETRAS));
+    string ape = sanitizarString(cn, leerCadena("Apellidos: ", 60, ValidacionTipo::SOLO_LETRAS));
+    string dir = sanitizarString(cn, leerCadena("Direccion: ", 80, ValidacionTipo::DIRECCION));
+    string tel = sanitizarString(cn, leerCadena("Telefono: ", 25, ValidacionTipo::SOLO_DIGITOS));
+    string cui = sanitizarString(cn, leerCadena("CUI: ", 15, ValidacionTipo::SOLO_DIGITOS));
     int gen = leerEntero("Genero (1=M, 0=F): ");
-    string fNac = sanitizarString(cn, leerCadena("Fecha Nacimiento (YYYY-MM-DD): ", 10));
+    string fNac = sanitizarString(cn, leerCadena("Fecha Nacimiento (YYYY-MM-DD): ", 10, ValidacionTipo::FECHA));
     int idPuesto = leerEntero("ID Puesto: ");
-    string fInicio = sanitizarString(cn, leerCadena("Fecha Inicio Labores (YYYY-MM-DD): ", 10));
+    string fInicio = sanitizarString(cn, leerCadena("Fecha Inicio Labores (YYYY-MM-DD): ", 10, ValidacionTipo::FECHA));
 
     string query = "INSERT INTO empleados (nombres, apellidos, direccion, telefono, cui, genero, fecha_nacimiento, id_puesto, fecha_inicio_labores, fecha_ingreso) VALUES ('"
         + nom + "', '" + ape + "', '" + dir + "', '" + tel + "', '" + cui + "', " + to_string(gen) + ", '" + fNac + "', " + to_string(idPuesto) + ", '" + fInicio + "', NOW());";
@@ -564,11 +599,20 @@ void insertarCompra(ConexionBD& cn) {
 void ejecutarActualizacion(string entidad, ConexionBD& cn) {
     int id = leerEntero("Ingrese ID a modificar: ");
     string tabla = "", campoId = "", campoUpd = "";
-    if (entidad == "Marcas") { tabla = "marcas"; campoId = "id_marca"; campoUpd = "marca"; }
-    else if (entidad == "Puestos") { tabla = "puestos"; campoId = "id_puesto"; campoUpd = "puesto"; }
-    else { cout << "Soporte rapido solo para catalogos pequenos.\n"; return; }
+    ValidacionTipo tipo = ValidacionTipo::GENERICO;
+    if (entidad == "Marcas") {
+        tabla = "marcas"; campoId = "id_marca"; campoUpd = "marca";
+        tipo = ValidacionTipo::SOLO_LETRAS;
+    }
+    else if (entidad == "Puestos") {
+        tabla = "puestos"; campoId = "id_puesto"; campoUpd = "puesto";
+        tipo = ValidacionTipo::SOLO_LETRAS;
+    }
+    else {
+        cout << "Soporte rapido solo para catalogos pequenos.\n"; return;
+    }
 
-    string nuevoVal = sanitizarString(cn, leerCadena("Nuevo valor: ", 50));
+    string nuevoVal = sanitizarString(cn, leerCadena("Nuevo valor: ", 50, tipo));
     string q = "UPDATE " + tabla + " SET " + campoUpd + " = '" + nuevoVal + "' WHERE " + campoId + " = " + to_string(id);
     if (mysql_query(cn.getConector(), q.c_str()) == 0) cout << "[OK] Actualizado." << endl;
     else cout << "[!] Error: " << mysql_error(cn.getConector()) << endl;
