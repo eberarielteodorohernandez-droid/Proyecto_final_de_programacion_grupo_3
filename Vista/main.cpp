@@ -221,7 +221,7 @@ int main() {
     int opcion = 0;
     do {
         cout << "\n=================================================" << endl;
-        cout << "        SUPERMERCADO XYZ - MENU PRINCIPAL        " << endl;
+        cout << "        SUPERMERCADO BDM - MENU PRINCIPAL        " << endl;
         cout << "=================================================" << endl;
         cout << "1. Modulo de Ventas y Facturacion " << endl;
         cout << "2. Modulo de Compras e Inventario" << endl;
