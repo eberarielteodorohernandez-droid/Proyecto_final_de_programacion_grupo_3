@@ -17,7 +17,7 @@ public:
     void abrir_conexion() {
         conector = mysql_init(0);
         // Conexión directa usando tus credenciales de MySQL
-        conector = mysql_real_connect(conector, "localhost", "root", "eber_yt19", "sistema_ventas", 3306, NULL, 0);
+        conector = mysql_real_connect(conector, "localhost", "root", "josue123", "sistema_ventas", 3306, NULL, 0);
 
         if (conector) {
             cout << "[OK] Conexion exitosa a la base de datos (MySQL API)." << endl;

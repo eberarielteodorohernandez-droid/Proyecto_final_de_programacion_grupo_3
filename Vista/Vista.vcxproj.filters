@@ -21,15 +21,9 @@
     <ClCompile Include="ConexionBD.cpp">
       <Filter>Archivos de origen</Filter>
     </ClCompile>
-    <ClCompile Include="persona.cpp">
-      <Filter>Archivos de origen</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ConexionBD.h">
-      <Filter>Archivos de encabezado</Filter>
-    </ClInclude>
-    <ClInclude Include="persona.h">
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
   </ItemGroup>
